@@ -3,6 +3,7 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+import datetime
 
 # 認証情報の取得（ローカル: jsonファイル, Cloud: st.secrets）
 def get_service_account_info():
@@ -59,31 +60,36 @@ def add_homework(child, content, deadline, status, memo):
 
 # Streamlitアプリ本体
 def main():
-    st.title('宿題進捗管理アプリ')
-    st.write('Googleスプレッドシートと連携しています')
+    st.title('2025年夏休みの宿題かんりアプリ')
+    # 本日の日付と残り日数表示
+    today = datetime.date.today()
+    target = datetime.date(2025, 8, 29)
+    days_left = (target - today).days
+    st.write(f'きょうは {today.strftime("%Y年%m月%d日")} です。')
+    st.markdown(f'<h2 style="color:#e17055;">夏休みはあと {days_left}日です</h2>', unsafe_allow_html=True)
 
-    # --- 宿題追加フォーム ---
-    with st.form(key='add_form'):
-        st.subheader('宿題を追加')
-        child = st.selectbox('子供', ['そら', 'こころ'])
-        content = st.text_input('宿題内容')
-        deadline = st.date_input('期限')
-        status = st.selectbox('進捗（0〜10）', list(range(11)))
-        memo = st.text_input('メモ')
-        submitted = st.form_submit_button('追加')
-        if submitted:
-            add_homework(child, content, deadline.strftime('%Y/%m/%d'), status, memo)
-            st.session_state["added"] = True
+    tab_add, tab1, tab2 = st.tabs(["新しい宿題をふやす", "そらの宿題", "こころの宿題"])
 
-    if st.session_state.get("added"):
-        st.success('宿題を追加しました')
-        st.session_state["added"] = False
+    with tab_add:
+        with st.form(key='add_form'):
+            st.subheader('新しい宿題をふやす')
+            child = st.selectbox('なまえ', ['そら', 'こころ'])
+            content = st.text_input('おべんきょう')
+            deadline = st.date_input('いつまでにやる')
+            status = st.selectbox('できたかな？（0〜10）', list(range(11)))
+            memo = st.text_input('メモ')
+            submitted = st.form_submit_button('ふやす')
+            if submitted:
+                add_homework(child, content, deadline.strftime('%Y/%m/%d'), status, memo)
+                st.session_state["added"] = True
+        if st.session_state.get("added"):
+            st.success('新しい宿題をふやしました')
+            st.session_state["added"] = False
 
     df = fetch_homework_data()
     if df.empty:
         st.info('データがありません')
     else:
-        tab1, tab2 = st.tabs(["そらの宿題", "こころの宿題"])
         for tab, name in zip([tab1, tab2], ["そら", "こころ"]):
             with tab:
                 st.subheader(f'{name}の宿題リスト')
@@ -102,21 +108,22 @@ def main():
                     # 未達成宿題リスト
                     not_done = filtered_df[filtered_df['進捗'].astype(int) < 10]
                     if not not_done.empty:
-                        st.warning('あとやるべき宿題:')
-                        st.table(not_done[['宿題内容', '進捗', '期限']])
+                        st.warning('まだの宿題:')
+                        st.table(not_done[['宿題内容', '進捗', '期限', 'メモ']])
                     for idx, row in filtered_df.iterrows():
-                        cols = st.columns([2, 3, 3, 3, 3, 3])
-                        cols[0].write(f"ID: {row['ID']}")
-                        cols[1].write(f"子供: {row['子供']}")
-                        cols[2].write(f"内容: {row['宿題内容']}")
-                        cols[3].write(f"期限: {row['期限']}")
-                        new_status = cols[4].selectbox(
-                            '進捗', list(range(11)), index=int(row['進捗']), key=f"status_{row['ID']}")
-                        if cols[5].button('更新', key=f"update_{row['ID']}"):
+                        cols = st.columns([2, 3, 3, 3, 3, 3, 3])
+                        # cols[0]（ID）は表示しない
+                        cols[0].write(f"なまえ: {row['子供']}")
+                        cols[1].write(f"おべんきょう: {row['宿題内容']}")
+                        cols[2].write(f"いつまでにやる: {row['期限']}")
+                        new_status = cols[3].selectbox(
+                            'できたかな？', list(range(11)), index=int(row['進捗']), key=f"status_{row['ID']}")
+                        if cols[4].button('なおす', key=f"update_{row['ID']}"):
                             update_homework_status(row['ID'], new_status)
                             st.session_state["updated_id"] = row['ID']
+                        cols[5].write(f"メモ: {row['メモ']}")
                     if st.session_state.get("updated_id"):
-                        st.success(f"ID {st.session_state['updated_id']} の進捗を更新しました")
+                        st.success(f"なおしました！")
                         st.session_state["updated_id"] = None
 
 # 進捗更新用関数
