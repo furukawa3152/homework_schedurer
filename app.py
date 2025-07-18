@@ -4,6 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
+import altair as alt
 
 # 認証情報の取得（ローカル: jsonファイル, Cloud: st.secrets）
 def get_service_account_info():
@@ -102,29 +103,50 @@ def main():
                     if total > 0:
                         progress_sum = filtered_df['進捗'].astype(int).sum()
                         percent = int(progress_sum / (total * 10) * 100)
-                        st.progress(percent, text=f"達成率: {percent}%")
-                        # 宿題ごとの進捗棒グラフ
-                        st.bar_chart(filtered_df.set_index('宿題内容')['進捗'])
+                        st.progress(percent, text=f"がんばりメーター: {percent}%")
+                        # 宿題ごとの進捗棒グラフ（Y軸0〜10固定）
+                        # 進捗に応じて色分け用のデータを作成
+                        chart_df = filtered_df.copy()
+                        chart_df['進捗レベル'] = chart_df['進捗'].apply(
+                            lambda x: 'よくできている' if x >= 8 else ('がんばっている' if x >= 4 else 'まだこれから')
+                        )
+                        
+                        chart = alt.Chart(chart_df).mark_bar().encode(
+                            x='宿題内容',
+                            y=alt.Y('進捗', scale=alt.Scale(domain=[0, 10], nice=False), axis=alt.Axis(values=list(range(0, 11)))),
+                            color=alt.Color('進捗レベル', scale=alt.Scale(
+                                domain=['まだこれから', 'がんばっている', 'よくできている'],
+                                range=['red', 'orange', 'green']
+                            )),
+                            tooltip=['宿題内容', '進捗']
+                        ).properties(
+                            title='たっせいじょうきょう',
+                            width=400,
+                            height=300
+                        )
+                        st.altair_chart(chart, use_container_width=True)
                     # 未達成宿題リスト
                     not_done = filtered_df[filtered_df['進捗'].astype(int) < 10]
                     if not not_done.empty:
-                        st.warning('まだの宿題:')
+                        st.warning('のこってる宿題:')
                         st.table(not_done[['宿題内容', '進捗', '期限', 'メモ']])
                     for idx, row in filtered_df.iterrows():
-                        cols = st.columns([2, 3, 3, 3, 3, 3, 3])
-                        # cols[0]（ID）は表示しない
-                        cols[0].write(f"なまえ: {row['子供']}")
-                        cols[1].write(f"おべんきょう: {row['宿題内容']}")
-                        cols[2].write(f"いつまでにやる: {row['期限']}")
-                        new_status = cols[3].selectbox(
-                            'できたかな？', list(range(11)), index=int(row['進捗']), key=f"status_{row['ID']}")
-                        if cols[4].button('なおす', key=f"update_{row['ID']}"):
+                        cols = st.columns([5, 3, 3, 3, 5, 1])
+                        cols[0].write(f"{row['宿題内容']}")
+                        cols[1].write(f"{row['期限']}　　までに終わる")
+                        new_status = cols[2].selectbox(
+                            'たっせいりつ', list(range(11)), index=int(row['進捗']), key=f"status_{row['ID']}")
+                        if cols[3].button('こうしん', key=f"update_{row['ID']}"):
                             update_homework_status(row['ID'], new_status)
                             st.session_state["updated_id"] = row['ID']
-                        cols[5].write(f"メモ: {row['メモ']}")
+                            st.session_state["needs_rerun"] = True
+                        cols[4].write(f"{row['メモ']}")
                     if st.session_state.get("updated_id"):
                         st.success(f"なおしました！")
                         st.session_state["updated_id"] = None
+                        if st.session_state.get("needs_rerun"):
+                            st.session_state["needs_rerun"] = False
+                            st.rerun()
 
 # 進捗更新用関数
 def update_homework_status(target_id, new_status):
