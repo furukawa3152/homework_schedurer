@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
 import altair as alt
+import pytz
 
 # 認証情報の取得（ローカル: jsonファイル, Cloud: st.secrets）
 def get_service_account_info():
@@ -63,7 +64,8 @@ def add_homework(child, content, deadline, status, memo):
 def main():
     st.title('2025年夏休みの宿題かんりアプリ')
     # 本日の日付と残り日数表示
-    today = datetime.date.today()
+    jst = pytz.timezone('Asia/Tokyo')
+    today = datetime.datetime.now(jst).date()
     target = datetime.date(2025, 8, 29)
     days_left = (target - today).days
     st.write(f'きょうは {today.strftime("%Y年%m月%d日")} です。')
