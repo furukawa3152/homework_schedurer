@@ -6,6 +6,7 @@ import pandas as pd
 import datetime
 import altair as alt
 import pytz
+import openai
 
 # 認証情報の取得（ローカル: jsonファイル, Cloud: st.secrets）
 def get_service_account_info():
@@ -71,6 +72,42 @@ def main():
     st.write(f'きょうは {today.strftime("%Y年%m月%d日")} です。')
     st.markdown(f'<h2 style="color:#e17055;">夏休みはあと {days_left}日です</h2>', unsafe_allow_html=True)
 
+    # OpenAI APIキー入力欄
+    st.sidebar.header('ChatGPTでほめてもらう')
+    openai_api_key = st.sidebar.text_input('OpenAIのAPIキーを入力してください', type='password', key='openai_api_key')
+
+    def get_praise_message(child_name, df, today):
+        # 宿題進捗状況をテキスト化
+        homework_lines = []
+        for _, row in df.iterrows():
+            homework_lines.append(f"・{row['宿題内容']}：進捗{row['進捗']}/10（期日：{row['期限']}）")
+        homework_text = '\n'.join(homework_lines)
+        prompt = f"""
+あなたは小学生を厳しい口調ながらやさしく励ます「パイル先生」です。
+下記の宿題進捗状況と本日の日付、各宿題の目標期日を見て、
+1. できていることをしっかり褒めて
+2. まだ終わっていない宿題や、これからやるべきことを励ましてください。
+口調は、以下を参考にしてください。最初に、「パイル先生だ。」と言ってください。
+「なかなか頑張っているじゃないか！」
+「いいぞ、その調子だ」
+「頑張れ！あと少しだ」
+【本日の日付】{today.strftime('%Y年%m月%d日')}
+【{child_name}の宿題進捗状況】\n{homework_text}
+"""
+        if not openai_api_key:
+            return 'OpenAIのAPIキーを入力してください。'
+        try:
+            client = openai.OpenAI(api_key=openai_api_key)
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.7
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f'エラー: {e}'
+
     tab_add, tab1, tab2 = st.tabs(["新しい宿題をふやす", "そらの宿題", "こころの宿題"])
 
     with tab_add:
@@ -97,6 +134,12 @@ def main():
             with tab:
                 st.subheader(f'{name}の宿題リスト')
                 filtered_df = df[df['子供'] == name]
+                # ほめてもらうボタン
+                if st.button(f'パイル先生ボタン', key=f'praise_{name}'):
+                    praise_message = get_praise_message(name, filtered_df, today)
+                    st.session_state[f'praise_message_{name}'] = praise_message
+                if st.session_state.get(f'praise_message_{name}'):
+                    st.info(st.session_state[f'praise_message_{name}'])
                 if filtered_df.empty:
                     st.info('データがありません')
                 else:
