@@ -76,13 +76,14 @@ def main():
     st.sidebar.header('ChatGPTでほめてもらう')
     openai_api_key = st.sidebar.text_input('OpenAIのAPIキーを入力してください', type='password', key='openai_api_key')
 
-    def get_praise_message(child_name, df, today):
+    def get_praise_message(child_name, df, today, mode="gentle"):
         # 宿題進捗状況をテキスト化
         homework_lines = []
         for _, row in df.iterrows():
             homework_lines.append(f"・{row['宿題内容']}：進捗{row['進捗']}/10（期日：{row['期限']}）")
         homework_text = '\n'.join(homework_lines)
-        prompt = f"""
+        if mode == "gentle":
+            prompt = f"""
 あなたは小学生を厳しい口調ながらやさしく励ます「パイル先生」です。
 下記の宿題進捗状況と本日の日付、各宿題の目標期日を見て、
 1. できていることをしっかり褒めて
@@ -91,6 +92,19 @@ def main():
 「なかなか頑張っているじゃないか！」
 「いいぞ、その調子だ」
 「頑張れ！あと少しだ」
+【本日の日付】{today.strftime('%Y年%m月%d日')}
+【{child_name}の宿題進捗状況】\n{homework_text}
+"""
+        else:
+            prompt = f"""
+あなたは小学生を厳しい口調で叱咤激励する「パイル先生」です。
+下記の宿題進捗状況と本日の日付、各宿題の目標期日を見て、
+1. できていることは短く褒めて
+2. まだ終わっていない宿題や、これからやるべきことを厳しく叱咤激励してください。
+口調は、以下を参考にしてください。最初に、「パイル先生だ。おこっているぞ！」と言ってください。
+「もっと本気を出せ！」
+「だらだらしていると間に合わないぞ！」
+「やればできるんだから、さっさとやりなさい！」
 【本日の日付】{today.strftime('%Y年%m月%d日')}
 【{child_name}の宿題進捗状況】\n{homework_text}
 """
@@ -134,12 +148,20 @@ def main():
             with tab:
                 st.subheader(f'{name}の宿題リスト')
                 filtered_df = df[df['子供'] == name]
-                # ほめてもらうボタン
-                if st.button(f'パイル先生ボタン', key=f'praise_{name}'):
-                    praise_message = get_praise_message(name, filtered_df, today)
-                    st.session_state[f'praise_message_{name}'] = praise_message
-                if st.session_state.get(f'praise_message_{name}'):
-                    st.info(st.session_state[f'praise_message_{name}'])
+                # ほめてもらうボタン（やさしい/おこってる）
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f'パイル先生（やさしいモード）', key=f'praise_gentle_{name}'):
+                        praise_message = get_praise_message(name, filtered_df, today, mode="gentle")
+                        st.session_state[f'praise_message_gentle_{name}'] = praise_message
+                    if st.session_state.get(f'praise_message_gentle_{name}'):
+                        st.info(st.session_state[f'praise_message_gentle_{name}'])
+                with col2:
+                    if st.button(f'パイル先生（おこってるモード）', key=f'praise_angry_{name}'):
+                        praise_message = get_praise_message(name, filtered_df, today, mode="angry")
+                        st.session_state[f'praise_message_angry_{name}'] = praise_message
+                    if st.session_state.get(f'praise_message_angry_{name}'):
+                        st.warning(st.session_state[f'praise_message_angry_{name}'])
                 if filtered_df.empty:
                     st.info('データがありません')
                 else:
