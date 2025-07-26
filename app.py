@@ -50,6 +50,32 @@ def fetch_homework_data():
     df = pd.DataFrame(data)
     return df
 
+def fetch_today_event(today):
+    """同日のイベントトピックを取得"""
+    try:
+        gc = get_gspread_client()
+        sh = gc.open(SPREADSHEET_NAME)
+        days_worksheet = sh.worksheet('days')  # daysシートを取得
+        data = days_worksheet.get_all_records()
+        df = pd.DataFrame(data)
+        
+        # 日付列の名前を確認（A列が日付、B列がイベント）
+        if len(df.columns) >= 2:
+            date_col = df.columns[0]  # A列（日付）
+            event_col = df.columns[1]  # B列（イベント）
+            
+            # 同日のイベントを検索
+            today_str = today.strftime('%Y/%m/%d')
+            matching_events = df[df[date_col] == today_str]
+            
+            if not matching_events.empty:
+                events = matching_events[event_col].tolist()
+                return events
+        return []
+    except Exception as e:
+        st.error(f'イベント取得エラー: {e}')
+        return []
+
 def add_homework(child, content, deadline, status, memo):
     ws = get_worksheet()
     # 既存データ取得
@@ -82,18 +108,26 @@ def main():
         for _, row in df.iterrows():
             homework_lines.append(f"・{row['宿題内容']}：進捗{row['進捗']}/10（期日：{row['期限']}）")
         homework_text = '\n'.join(homework_lines)
+        
+        # 同日のイベントを取得
+        today_events = fetch_today_event(today)
+        event_text = ""
+        if today_events:
+            event_text = f"\n【本日のイベント】\n" + "\n".join([f"・{event}" for event in today_events])
+        
         if mode == "gentle":
             prompt = f"""
 あなたは小学生を厳しい口調ながらやさしく励ます「パイル先生」です。
 下記の宿題進捗状況と本日の日付、各宿題の目標期日を見て、
 1. できていることをしっかり褒めて
 2. まだ終わっていない宿題や、これからやるべきことを励ましてください。
+3. 本日のイベントがある場合は、そのイベントも考慮してコメントしてください。
 口調は、以下を参考にしてください。最初に、「パイル先生だ。」と言ってください。
 「なかなか頑張っているじゃないか！」
 「いいぞ、その調子だ」
 「頑張れ！あと少しだ」
 【本日の日付】{today.strftime('%Y年%m月%d日')}
-【{child_name}の宿題進捗状況】\n{homework_text}
+【{child_name}の宿題進捗状況】\n{homework_text}{event_text}
 """
         else:
             prompt = f"""
@@ -101,12 +135,13 @@ def main():
 下記の宿題進捗状況と本日の日付、各宿題の目標期日を見て、
 1. できていることは短く褒めて
 2. まだ終わっていない宿題や、これからやるべきことを厳しく叱咤激励してください。
+3. 本日のイベントがある場合は、そのイベントも考慮してコメントしてください。
 口調は、以下を参考にしてください。最初に、「パイル先生だ。おこっているぞ！」と言ってください。
 「もっと本気を出せ！」
 「だらだらしていると間に合わないぞ！」
 「やればできるんだから、さっさとやりなさい！」
 【本日の日付】{today.strftime('%Y年%m月%d日')}
-【{child_name}の宿題進捗状況】\n{homework_text}
+【{child_name}の宿題進捗状況】\n{homework_text}{event_text}
 """
         if not openai_api_key:
             return 'OpenAIのAPIキーを入力してください。'
